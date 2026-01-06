@@ -1,0 +1,380 @@
+<!--
+Wedding RSVP Form
+Features:
+- Language support (English/French) via URL parameter 'language'
+- Venue info, Google Map, wedding image
+- Invitee Name 1 and 2 (prefilled from URL params 'displaynameno1' and 'displaynameno2')
+- Meal selection (dynamic, localized)
+- Comments section
+- RSVP summary modal (localized, double width)
+- RSVP data sent to Azure Function endpoint
+--URL example: http://127.0.0.1:5500/weddinginviteV2.html?language=en&displaynameno1=Alain%20Terieur&displaynameno2=Therese%20Crisplies&userid=445566
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Wedding RSVP</title>
+	<style>
+		/* Main container for the form */
+		.main-container {
+			max-width: 820px;
+			margin: 0 auto;
+			display: flex;
+			justify-content: center;  /* horizontal center */
+			align-items: center;      /* vertical center */
+			border: 0px solid #060606;
+			min-height: 100vh;        /* full viewport height */
+		}
+
+		/* Outer container for the form */
+		.outer-container {
+			max-width: 1000px; /* Larger than .main-container */
+			width: 100%;
+			margin: 0;
+			border: 0px solid #d32f2f;
+			background-color: #fff;
+			background-image: url('images/form-bg800x1422.png');
+			background-size: cover;
+			background-position: top;
+			background-repeat: no-repeat;
+			display: flex;
+			justify-content: flex-end;
+			height: 1422px; /* Match background image height */
+		}
+	/* Main page styling */
+	body { font-family: Arial, sans-serif; margin: 0; padding: 0; background: #f7f7f7; }
+		.container {
+			max-width: 400px;
+			margin: 100px 75px 40px auto;
+			padding: 24px;
+			display: flex;
+			flex-direction: column;
+			align-items: flex-end;
+			border-radius: 8px;
+			box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+			border: 0px solid #388e3c;
+			height: 1000px;
+		}
+	h1 { text-align: center; }
+	.section { margin-bottom: 24px; }
+	label { display: block; margin-bottom: 8px; font-weight: bold; }
+	input, select, textarea { width: 100%; padding: 8px; margin-bottom: 12px; border-radius: 4px; border: 1px solid #ccc; }
+	button { padding: 10px 20px; border: none; border-radius: 4px; background: #0078d4; color: #fff; font-size: 16px; cursor: pointer; }
+	button:disabled { background: #aaa; }
+	.add-invitee { background: #e2e2e2; color: #333; margin-bottom: 12px; }
+	/* Modal styling for RSVP summary */
+	.modal { display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.4); justify-content: center; align-items: center; }
+	.modal-content { background: #fff; padding: 24px; border-radius: 8px; max-width: 800px; }
+	</style>
+</head>
+<body>
+	<div class="main-container" style="border:0px solid #d32f2f;">
+	<!-- Outer container for the form -->
+	<div class="outer-container" style="border:1px solid #0a0909;">
+		<div class="container" style="border:0px solid #388e3c;">
+			<!-- RSVP form -->
+			<form id="rsvpForm">
+				<!-- Hidden User ID field (from URL param) -->
+				<input type="hidden" id="userid" name="userid">
+				<!-- Venue info section -->
+				<div class="section" id="venueSection">
+					<h1 id="title">Wedding RSVP</h1>
+					<div id="addressBlock">
+						<div id="addressLabel">Venue:</div>
+						<a id="mapLink" href="https://danytanguay-dev.github.io/website/index.html" target="_blank">View on Google Maps</a>
+					</div>
+	<!-- Beautiful confirmation modal -->
+	<div class="modal" id="confirmationModal">
+		<div class="modal-content" style="max-width:400px; background:#f0fff0; border:2px solid #388e3c; color:#388e3c; text-align:center;">
+			<div style="font-size:48px; margin-bottom:16px;">&#10004;</div>
+			<h2 id="confirmationTitle">Thank You!</h2>
+			<p id="confirmationMsg">Your RSVP has been submitted successfully.</p>
+			<button onclick="document.getElementById('confirmationModal').style.display='none';" style="background:#388e3c; color:#fff; padding:8px 24px; border:none; border-radius:4px; margin-top:16px;">Close</button>
+		</div>
+	</div>
+				</div>
+				<!-- Meal Instructions -->
+                <div id="mealInstructions">Instructions Meal Selection</div><br>
+				<!-- Meal selection and Invitee 2 section -->
+				<div class="section" id="mealSection">
+					<label id="invitee1Label" for="invitee1">Invitee Name</label>
+					<input type="text" id="invitee1" name="invitee1" required>
+					<label id="meal1Label" for="meal1">Meal Selection</label>
+					<select id="meal1" name="meal1" required>
+						<option value="" data-en="Select a meal" data-fr="Choisissez un repas" selected disabled>Select a meal</option>
+						<option value="Chicken" data-en="Chicken" data-fr="Poulet">Chicken</option>
+						<option value="Meat" data-en="Meat" data-fr="Viande">Meat</option>
+						<option value="Vegetarian" data-en="Vegetarian" data-fr="Végétarien">Vegetarian</option>
+					</select>
+					<br><br><br>
+					<!-- Button to add Invitee 2 -->
+					<button type="button" class="add-invitee" id="addInviteeBtn">+ Add Second Invitee</button>
+					<!-- Invitee 2 block (hidden by default) -->
+					<div id="invitee2Block" style="display:none;">
+						<label id="invitee2Label" for="invitee2">Invitee Name 2</label>
+						<input type="text" id="invitee2" name="invitee2">
+						<label id="meal2Label" for="meal2">Meal Selection 2</label>
+						<select id="meal2" name="meal2">
+							<option value="" data-en="Select a meal" data-fr="Choisissez un repas" selected disabled>Select a meal</option>
+							<option value="Chicken" data-en="Chicken" data-fr="Poulet">Chicken</option>
+							<option value="Meat" data-en="Meat" data-fr="Viande">Meat</option>
+							<option value="Vegetarian" data-en="Vegetarian" data-fr="Végétarien">Vegetarian</option>
+						</select>
+						<!-- Button to remove Invitee 2 -->
+						<button type="button" class="remove-invitee" id="removeInviteeBtn" style="background:#f8d7da;color:#721c24;margin-top:8px;">Remove Second Invitee</button>
+					</div>
+				</div>
+				<!-- Comments section -->
+				 <br>
+				<div class="section" id="commentSection">
+					<label id="commentLabel" for="comment">Comments (e.g. allergies)</label>
+					<textarea id="comment" name="comment" rows="3"></textarea>
+				</div>
+				<!-- Button to preview RSVP summary -->
+				<button type="button" id="previewBtn">Submit RSVP</button>
+			</form>
+		</div>
+	</div>
+</div>
+	<!-- RSVP Summary Modal -->
+	<div class="modal" id="summaryModal">
+		<!-- RSVP Summary Modal -->
+		<div class="modal-content" style="max-width:800px; background:linear-gradient(135deg,#f0fff0 60%,#e3f2fd 100%); border:2px solid #388e3c; color:#388e3c; box-shadow:0 8px 32px rgba(56,142,60,0.15); text-align:left; position:relative;">
+			<div style="display:flex; align-items:center; margin-bottom:24px;">
+				<div style="font-size:48px; margin-right:16px;">&#128151;</div>
+				<h2 id="summaryTitle" style="margin:0; font-size:2em; font-weight:700;">RSVP Summary</h2>
+			</div>
+			<div id="summaryContent" style="font-size:1.1em; margin-bottom:32px; background:#fff; border-radius:8px; padding:16px; box-shadow:0 2px 8px rgba(0,0,0,0.05);"></div>
+			<div style="display:flex; justify-content:flex-end; gap:16px;"></div>
+				<button id="confirmBtn" style="background:#388e3c; color:#fff; font-weight:600; padding:10px 32px; border:none; border-radius:6px; font-size:1em; box-shadow:0 2px 8px rgba(56,142,60,0.08); transition:background 0.2s;">&#10004; Confirm</button>
+				<button id="cancelBtn" style="background:#f8d7da; color:#721c24; font-weight:600; padding:10px 32px; border:none; border-radius:6px; font-size:1em; box-shadow:0 2px 8px rgba(200,0,0,0.06); transition:background 0.2s;">&#10006; Cancel</button>
+			</div>
+			<div style="position:absolute; top:16px; right:24px; font-size:24px; cursor:pointer; color:#388e3c;" onclick="document.getElementById('summaryModal').style.display='none';" title="Close">&#10006;</div>
+		</div>
+	</div>
+	<script>
+	// Language support and translations for UI labels/messages
+	const translations = {
+		en: {
+			title: "Carolyn and Dany's Wedding Invitation",
+			addressLabel: "Venue:",
+			invitee1Label: "Invitee Name",
+			meal1Label: "Meal Selection",
+			addInvitee: "+ Add Second Invitee",
+			removeInvitee: "Remove Second Invitee",
+			invitee2Label: "Invitee Name 2",
+			meal2Label: "Meal Selection 2",
+			commentLabel: "Comments (e.g. allergies)",
+			submit: "Submit",
+			summaryTitle: "RSVP Summary",
+			confirm: "Confirm",
+			cancel: "Cancel",
+			mapLink: "More details about the wedding location",
+			mealInstructions: "Please select your menu choice and for your guest if applicable.",
+			thankYou: "Thank you, your RSVP was submitted successfully!"
+		},
+		fr: {
+			title: "Invitation Mariage de Carolyn et Dany",
+			addressLabel: "Lieu:",
+			invitee1Label: "Nom de l'invité",
+			meal1Label: "Choix du repas",
+			addInvitee: "+ Ajouter un deuxième invité",
+			removeInvitee: "Supprimer le deuxième invité",
+			invitee2Label: "Nom de l'invité 2",
+			meal2Label: "Choix du repas 2",
+			commentLabel: "Commentaires (ex: allergies)",
+			submit: "Envoyer RSVP",
+			summaryTitle: "Résumé RSVP",
+			confirm: "Confirmer",
+			cancel: "Annuler",
+			mapLink: "Plus de détails de l'emplacement du mariage",
+			mealInstructions: "Veuillez sélectionner votre choix de menu et celui de votre invité le cas échéant.",
+			thankYou: "Merci, votre RSVP a été soumis avec succès !"
+		}
+	};
+	function getParam(name) {
+	// Helper to get URL parameter value
+	const url = new URL(window.location.href);
+	return url.searchParams.get(name);
+	}
+	function setLanguage(lang) {
+		// Set all UI labels and dropdowns based on selected language
+		const t = translations[lang] || translations.en;
+		document.getElementById('title').textContent = t.title;
+		document.getElementById('addressLabel').textContent = t.addressLabel;
+		document.getElementById('invitee1Label').textContent = t.invitee1Label;
+		document.getElementById('meal1Label').textContent = t.meal1Label;
+		document.getElementById('addInviteeBtn').textContent = t.addInvitee;
+		document.getElementById('removeInviteeBtn').textContent = t.removeInvitee;
+		document.getElementById('invitee2Label').textContent = t.invitee2Label;
+		document.getElementById('meal2Label').textContent = t.meal2Label;
+		document.getElementById('commentLabel').textContent = t.commentLabel;
+		document.getElementById('previewBtn').textContent = t.submit;
+		document.getElementById('summaryTitle').textContent = t.summaryTitle;
+		document.getElementById('confirmBtn').textContent = t.confirm;
+		document.getElementById('cancelBtn').textContent = t.cancel;
+		document.getElementById('mapLink').textContent = t.mapLink;
+		document.getElementById('mealInstructions').textContent = t.mealInstructions;
+		// Update meal dropdowns
+		const meal1Options = document.getElementById('meal1').options;
+		const meal2Options = document.getElementById('meal2').options;
+		for (let i = 0; i < meal1Options.length; i++) {
+			meal1Options[i].text = lang === 'fr' ? meal1Options[i].getAttribute('data-fr') : meal1Options[i].getAttribute('data-en');
+		}
+		for (let i = 0; i < meal2Options.length; i++) {
+			meal2Options[i].text = lang === 'fr' ? meal2Options[i].getAttribute('data-fr') : meal2Options[i].getAttribute('data-en');
+		}
+	}
+	// Set language
+	const lang = getParam('language') || 'en';
+	setLanguage(lang);
+	// Set invitee name from URL param and make read-only if present and not empty
+	// Prefill Invitee Name 1 from URL param and set to read-only
+	const displayNameNo1 = getParam('displaynameno1');
+	if (displayNameNo1 && displayNameNo1.trim() !== "") {
+		const invitee1Input = document.getElementById('invitee1');
+		invitee1Input.value = displayNameNo1;
+		invitee1Input.readOnly = true;
+		invitee1Input.style.background = "#e9ecef";
+	}
+	// Prefill Invitee Name 2 from URL param, always editable
+	const displayNameNo2 = getParam('displaynameno2');
+	if (displayNameNo2 && displayNameNo2.trim() !== "") {
+		const invitee2Input = document.getElementById('invitee2');
+		invitee2Input.value = displayNameNo2;
+		invitee2Input.readOnly = false;
+		invitee2Input.style.background = "";
+		// Show second invitee block if not visible
+		document.getElementById('invitee2Block').style.display = 'block';
+		document.getElementById('addInviteeBtn').style.display = 'none';
+	}
+	// Set userid from URL param
+	// Prefill hidden User ID from URL param
+	const userId = getParam('userid');
+	if (userId && userId.trim() !== "") {
+		document.getElementById('userid').value = userId;
+	}
+	// Add second invitee
+	document.getElementById('addInviteeBtn').onclick = function() {
+	// Show Invitee 2 block when button is clicked
+	document.getElementById('invitee2Block').style.display = 'block';
+	this.style.display = 'none';
+	};
+	// Remove second invitee
+	document.getElementById('removeInviteeBtn').onclick = function() {
+	// Hide Invitee 2 block and reset its fields
+	document.getElementById('invitee2').value = '';
+	document.getElementById('meal2').selectedIndex = 0;
+	document.getElementById('invitee2Block').style.display = 'none';
+	document.getElementById('addInviteeBtn').style.display = 'inline-block';
+	};
+	// Preview RSVP
+	document.getElementById('previewBtn').onclick = function() {
+		// Validate and preview RSVP summary
+		const invitee1 = document.getElementById('invitee1').value.trim();
+		const meal1 = document.getElementById('meal1').value;
+		const invitee2Block = document.getElementById('invitee2Block');
+		let invitee2 = '', meal2 = '';
+		let errorMsg = '';
+		// Validate invitee1
+		if (!invitee1) {
+			errorMsg += lang === 'fr' ? "Veuillez entrer le nom de l'invité 1.\n" : "Please enter Invitee Name 1.\n";
+		}
+		// Validate meal1
+		if (!meal1) {
+			errorMsg += lang === 'fr' ? "Veuillez sélectionner un repas pour l'invité 1.\n" : "Please select a meal for Invitee 1.\n";
+		}
+		// If invitee2 is visible, validate
+		if (invitee2Block.style.display !== 'none') {
+			invitee2 = document.getElementById('invitee2').value.trim();
+			meal2 = document.getElementById('meal2').value;
+			if (!invitee2) {
+				errorMsg += lang === 'fr' ? "Veuillez entrer le nom de l'invité 2.\n" : "Please enter Invitee Name 2.\n";
+			}
+			if (!meal2) {
+				errorMsg += lang === 'fr' ? "Veuillez sélectionner un repas pour l'invité 2.\n" : "Please select a meal for Invitee 2.\n";
+			}
+		}
+		if (errorMsg) {
+			alert(errorMsg);
+			return;
+		}
+		const comment = document.getElementById('comment').value.trim();
+		const userIdValue = document.getElementById('userid').value;
+		let summary = '';
+		if (userIdValue) {
+			summary += `<strong>User ID:</strong> ${userIdValue}<br>`;
+		}
+		summary += `<strong>${translations[lang].invitee1Label}:</strong> ${invitee1}<br>`;
+		summary += `<strong>${translations[lang].meal1Label}:</strong> ${meal1}<br>`;
+		if (invitee2) {
+			summary += `<strong>${translations[lang].invitee2Label}:</strong> ${invitee2}<br>`;
+			summary += `<strong>${translations[lang].meal2Label}:</strong> ${meal2}<br>`;
+		}
+		if (comment) {
+			summary += `<strong>${translations[lang].commentLabel}:</strong> ${comment}<br>`;
+		}
+		document.getElementById('summaryContent').innerHTML = summary;
+		document.getElementById('summaryModal').style.display = 'flex';
+	};
+	// Confirm RSVP
+	document.getElementById('confirmBtn').onclick = function() {
+		// On confirm, show RSVP JSON in alert, then send RSVP data to Azure Function
+		document.getElementById('summaryModal').style.display = 'none';
+		// Collect RSVP data
+		const rsvpData = {
+			UserId: document.getElementById('userid').value,
+			Invitee1: document.getElementById('invitee1').value.trim(),
+			Meal1: document.getElementById('meal1').value,
+			Invitee2: document.getElementById('invitee2Block').style.display !== 'none' ? document.getElementById('invitee2').value.trim() : '',
+			Meal2: document.getElementById('invitee2Block').style.display !== 'none' ? document.getElementById('meal2').value : '',
+			Comment: document.getElementById('comment').value.trim()
+		};
+		//alert('POST ' + JSON.stringify(rsvpData, null, 2));
+		// RSVP confirmation messages
+		///const confirmMsg = lang === 'fr' ? 'RSVP envoyé ! Merci.' : 'RSVP submitted! Thank you.';
+		//const errorMsg = lang === 'fr' ? "Erreur lors de l'envoi du RSVP." : 'Error submitting RSVP.';
+		// Send RSVP to Azure Function and validate response
+      fetch('https://weddingpixeltracker.azurewebsites.net/api/WeddingInvitation', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(rsvpData)
+      })
+      .then(response => {
+		if (response.ok) {
+		  // Show confirmation modal with success message
+		  document.getElementById('confirmationTitle').textContent = lang === 'fr'
+			? 'Merci ' + rsvpData.Invitee1 + '!'
+			: 'Thank You ' + rsvpData.Invitee1 + '!';
+		  document.getElementById('confirmationMsg').textContent = translations[lang].thankYou;
+		  document.getElementById('confirmationModal').style.display = 'flex';
+		  // Redirect after a short delay
+		  setTimeout(() => {
+		    window.location.href = 'https://danytanguay-dev.github.io/website/index.html';
+		  }, 4000);
+		} else {
+		  // Show error in confirmation modal
+		  document.getElementById('confirmationTitle').textContent = lang === 'fr'
+			? 'Erreur'
+			: 'Error';
+		  document.getElementById('confirmationMsg').textContent = lang === 'fr'
+			? 'Erreur lors de la soumission du RSVP. Statut : ' + response.status
+			: 'Error submitting RSVP. Status: ' + response.status;
+		  document.getElementById('confirmationModal').style.display = 'flex';
+		}
+        return response.text();
+      })
+	  .then(text => {
+		console.log('Response:', text);
+	  });
+	}; // <-- Add missing closing brace for confirmBtn onclick
+	// Cancel RSVP
+	document.getElementById('cancelBtn').onclick = function() {
+	// Hide RSVP summary modal on cancel
+	document.getElementById('summaryModal').style.display = 'none';
+	};
+	</script>
+</body>
+</html>
